@@ -31,20 +31,35 @@
         <div id="landing" class="hidden">
             <header class="header">
                 <div class="container">
-                  <div class="header-content">
-                    <div class="logo" title="FlowCheck Home">
-                        <img src="target.png" alt="FlowCheck Logo" style="width: 50px; height: 50px;">
-                      <span>FlowCheck</span>
+                    <div class="header-content">
+                        <div class="logo" title="FlowCheck Home" onclick="showPage('landing')" style="cursor: pointer;">
+                            <img src="target.png" alt="FlowCheck Logo" style="width: 40px; height: 40px;">
+                            <span class="logo-text">FlowCheck</span>
+                        </div>
+                        
+                        <!-- Desktop Navigation -->
+                        <nav class="nav desktop-nav">
+                            <button id="theme-toggle-landing" class="btn btn-secondary" onclick="toggleTheme()" aria-label="Toggle dark/light mode">🌙</button>
+                            <a href="#" class="btn btn-secondary" onclick="showPage('login')" aria-label="Log in to your account">Log in</a>
+                            <a href="#" class="btn btn-primary" onclick="showPage('signup')" aria-label="Sign up for FlowCheck">Sign up</a>
+                        </nav>
+                        
+                        <!-- Mobile Menu Button -->
+                        <button class="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Toggle menu">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </button>
                     </div>
-                    <nav class="nav">
-                      <!-- Add theme toggle button here -->
-                      <button id="theme-toggle-landing" class="btn btn-secondary" onclick="toggleTheme()" aria-label="Toggle dark/light mode">🌙</button>
-                      <a href="#" class="btn btn-secondary" onclick="showPage('login')" aria-label="Log in to your account">Log in</a>
-                      <a href="#" class="btn btn-primary" onclick="showPage('signup')" aria-label="Sign up for FlowCheck">Sign up</a>
+                    
+                    <!-- Mobile Navigation (initially hidden) -->
+                    <nav class="mobile-nav hidden">
+                        <button id="theme-toggle-mobile" class="btn btn-secondary mobile-nav-btn" onclick="toggleTheme()">Toggle Theme</button>
+                        <a href="#" class="btn btn-secondary mobile-nav-btn" onclick="showPage('login'); toggleMobileMenu();">Log in</a>
+                        <a href="#" class="btn btn-primary mobile-nav-btn" onclick="showPage('signup'); toggleMobileMenu();">Sign up</a>
                     </nav>
-                  </div>
                 </div>
-              </header>
+            </header>
         
             <main class="main">
                 <div class="container">
