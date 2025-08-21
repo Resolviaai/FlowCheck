@@ -218,15 +218,17 @@
                 <div class="container">
                     <div class="dashboard">
                         <!-- Timer Section -->
-                        <div class="card timer-section">
-                            <div class="form-group">
-                                <label class="label" for="session-description">Session description</label>
-                                <input type="text" id="session-description" class="input timer-input" placeholder="e.g., Writing report, Coding, Research...">
-                            </div>
-                            <button id="timer-btn" class="btn btn-primary timer-btn" onclick="toggleTimer()">Start</button>
-                            <div id="timer-display" class="timer-display">00:00:00</div>
-                            <div id="timer-info" class="timer-info"></div>
-                        </div>
+<div class="card timer-section" id="timer-section">
+    <div class="form-group" style="margin-bottom: 1.5rem;">
+        <label class="label" for="session-description">Session description</label>
+        <div class="timer-input-group">
+            <input type="text" id="session-description" class="input timer-input" placeholder="e.g., Writing report, Coding, Research...">
+            <button id="timer-btn" class="btn btn-primary" onclick="toggleTimer()">Start</button>
+        </div>
+    </div>
+    <div id="timer-display" class="timer-display">00:00:00</div>
+    <div id="timer-info" style="color: var(--text-secondary); font-size: 0.875rem; font-weight: 500;"></div>
+</div>
 
                         <!-- Stats Grid -->
                         <div class="stats-grid">

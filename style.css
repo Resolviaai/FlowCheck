@@ -825,3 +825,25 @@ body {
         font-size: 16px;
     }
 }
+/* Add to your CSS */
+.timer-persistent {
+    position: relative;
+}
+
+.timer-persistent::after {
+    content: 'Auto-saved';
+    position: absolute;
+    bottom: -20px;
+    right: 10px;
+    font-size: 0.75rem;
+    color: var(--accent-primary);
+    opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+    .timer-persistent::after {
+        bottom: -18px;
+        right: 5px;
+        font-size: 0.7rem;
+    }
+}

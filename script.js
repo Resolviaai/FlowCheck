@@ -1,5 +1,5 @@
-  // Firebase configuration
-  const firebaseConfig = {
+// Firebase configuration
+const firebaseConfig = {
     apiKey: "AIzaSyDoa8YzQ707xRs1IGD3AqdXNMgPwPM2FWA",
     authDomain: "flowcheck-a4412.firebaseapp.com",
     projectId: "flowcheck-a4412",
@@ -32,16 +32,36 @@ const inactivityModalEl = document.getElementById('inactivity-modal');
 const forgotPasswordModalEl = document.getElementById('forgot-password-modal');
 
 // Initialize app
-auth.onAuthStateChanged((user) => {
-    currentUser = user;
-    if (user) {
-        showPage('dashboard');
-        loadSessions();
-    } else {
-        showPage('landing');
-    }
-    loadingEl.classList.add('hidden');
-});
+function initApp() {
+    // Set up auth state listener
+    auth.onAuthStateChanged((user) => {
+        currentUser = user;
+        if (user) {
+            showPage('dashboard');
+            loadSessions();
+            // Load any saved timer state after a short delay
+            setTimeout(loadTimerState, 500);
+        } else {
+            showPage('landing');
+            // Clear any orphaned timer state if user is not logged in
+            localStorage.removeItem('flowcheck_timer_state');
+        }
+        loadingEl.classList.add('hidden');
+    });
+    
+    // Load saved theme
+    loadTheme();
+    
+    // Set up mobile viewport height
+    setVH();
+    window.addEventListener('resize', setVH);
+    
+    // Detect touch device
+    detectTouchDevice();
+    
+    // Set up event listeners
+    setupEventListeners();
+}
 
 // Theme management
 function toggleTheme() {
@@ -50,19 +70,20 @@ function toggleTheme() {
         document.getElementById('theme-toggle'),
         document.getElementById('theme-toggle-landing'),
         document.getElementById('theme-toggle-login'),
-        document.getElementById('theme-toggle-signup')
-    ];
+        document.getElementById('theme-toggle-signup'),
+        document.getElementById('theme-toggle-mobile')
+    ].filter(toggle => toggle !== null);
     
     if (body.classList.contains('light-theme')) {
         body.classList.remove('light-theme');
         themeToggles.forEach(toggle => {
-            if (toggle) toggle.textContent = '🌙';
+            toggle.textContent = '🌙';
         });
         localStorage.setItem('theme', 'dark');
     } else {
         body.classList.add('light-theme');
         themeToggles.forEach(toggle => {
-            if (toggle) toggle.textContent = '☀️';
+            toggle.textContent = '☀️';
         });
         localStorage.setItem('theme', 'light');
     }
@@ -73,40 +94,23 @@ function toggleTheme() {
     }
 }
 
-// Load saved theme
 function loadTheme() {
     const savedTheme = localStorage.getItem('theme');
     const themeToggles = [
         document.getElementById('theme-toggle'),
         document.getElementById('theme-toggle-landing'),
         document.getElementById('theme-toggle-login'),
-        document.getElementById('theme-toggle-signup')
-    ];
+        document.getElementById('theme-toggle-signup'),
+        document.getElementById('theme-toggle-mobile')
+    ].filter(toggle => toggle !== null);
     
     if (savedTheme === 'light') {
         document.body.classList.add('light-theme');
         themeToggles.forEach(toggle => {
-            if (toggle) toggle.textContent = '☀️';
+            toggle.textContent = '☀️';
         });
     }
 }
-
-// Initialize theme
-loadTheme();
-
-// Load saved theme
-function loadTheme() {
-    const savedTheme = localStorage.getItem('theme');
-    const themeToggle = document.getElementById('theme-toggle');
-    
-    if (savedTheme === 'light') {
-        document.body.classList.add('light-theme');
-        themeToggle.textContent = '☀️';
-    }
-}
-
-// Initialize theme
-loadTheme();
 
 // Navigation
 function showPage(pageName) {
@@ -145,6 +149,8 @@ async function handleSignup(event) {
 }
 
 function handleLogout() {
+    // Clear any timer state on logout
+    localStorage.removeItem('flowcheck_timer_state');
     auth.signOut();
 }
 
@@ -176,7 +182,7 @@ async function handleForgotPassword(event) {
     }
 }
 
-// Timer functions
+// Timer functions with persistence
 function toggleTimer() {
     if (isTimerRunning) {
         stopTimer();
@@ -196,6 +202,9 @@ function startTimer() {
     
     timerInterval = setInterval(updateTimer, 1000);
     updateTimerInfo();
+    
+    // Save timer state
+    saveTimerState();
 }
 
 function stopTimer(commit = true) {
@@ -223,6 +232,10 @@ function stopTimer(commit = true) {
     startTime = null;
     nextCheckTime = null;
     if (inactivityTimeout) clearTimeout(inactivityTimeout);
+    
+    // Clear saved timer state
+    localStorage.removeItem('flowcheck_timer_state');
+    document.getElementById('timer-section').classList.remove('timer-persistent');
 }
 
 function updateTimer() {
@@ -239,6 +252,11 @@ function updateTimer() {
     // Check for inactivity
     if (nextCheckTime && Date.now() >= nextCheckTime) {
         promptInactivity();
+    }
+    
+    // Save timer state every 30 seconds
+    if (elapsed % 30000 < 1000) {
+        saveTimerState();
     }
 }
 
@@ -277,11 +295,71 @@ function confirmStillWorking() {
     const now = Date.now();
     nextCheckTime = now + (30 * 60 * 1000); // 30 minutes
     updateTimerInfo();
+    
+    // Save updated timer state
+    saveTimerState();
 }
 
 function discardSession() {
     inactivityModalEl.classList.add('hidden');
     stopTimer(false);
+}
+
+// Timer state persistence
+function saveTimerState() {
+    if (isTimerRunning && startTime) {
+        const timerState = {
+            isRunning: isTimerRunning,
+            startTime: startTime,
+            nextCheckTime: nextCheckTime,
+            description: document.getElementById('session-description').value || 'Focus session'
+        };
+        localStorage.setItem('flowcheck_timer_state', JSON.stringify(timerState));
+        document.getElementById('timer-section').classList.add('timer-persistent');
+    }
+}
+
+function loadTimerState() {
+    const savedState = localStorage.getItem('flowcheck_timer_state');
+    if (savedState && currentUser) {
+        const state = JSON.parse(savedState);
+        
+        // Check if the timer was running and we have a valid start time
+        if (state.isRunning && state.startTime) {
+            const now = Date.now();
+            const elapsed = now - state.startTime;
+            
+            // Ask user if they want to resume the session
+            if (confirm('You have an unfinished session. Would you like to resume it?')) {
+                startTime = state.startTime;
+                isTimerRunning = true;
+                nextCheckTime = state.nextCheckTime;
+                
+                document.getElementById('session-description').value = state.description;
+                document.getElementById('session-description').disabled = true;
+                document.getElementById('timer-btn').textContent = 'Stop';
+                
+                timerInterval = setInterval(updateTimer, 1000);
+                updateTimerInfo();
+                document.getElementById('timer-section').classList.add('timer-persistent');
+                
+                // Adjust next check time based on elapsed time
+                const timeSinceLastCheck = now - (nextCheckTime - (state.nextCheckTime - state.startTime > 45*60*1000 ? 45*60*1000 : 30*60*1000));
+                if (timeSinceLastCheck > 5*60*1000) {
+                    promptInactivity();
+                }
+            } else {
+                // User doesn't want to resume, so save the session as is
+                saveSession({
+                    description: state.description,
+                    start: state.startTime,
+                    end: now,
+                    durationMs: elapsed
+                });
+                localStorage.removeItem('flowcheck_timer_state');
+            }
+        }
+    }
 }
 
 // Session management
@@ -292,6 +370,11 @@ async function saveSession(sessionData) {
             userId: currentUser.uid,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        
+        // Clear timer state after successful save
+        localStorage.removeItem('flowcheck_timer_state');
+        document.getElementById('timer-section').classList.remove('timer-persistent');
+        
         alert('Session saved!');
         loadSessions();
     } catch (error) {
@@ -325,7 +408,7 @@ function updateSessionsList() {
     const container = document.getElementById('sessions-list');
     
     if (sessions.length === 0) {
-        container.innerHTML = '<div style="text-align: center; color: #6b7280; padding: 2rem;">No sessions yet</div>';
+        container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 2rem;">No sessions yet</div>';
         return;
     }
     
@@ -343,7 +426,7 @@ function updateSessionsList() {
             <div style="font-weight: 500;">${session.description}</div>
             <div>${formatDateTime(session.start)}</div>
             <div>${formatDateTime(session.end)}</div>
-            <div style="font-weight: 600; color: #4f46e5;">${formatDuration(session.durationMs)}</div>
+            <div style="font-weight: 600; color: var(--accent-primary);">${formatDuration(session.durationMs)}</div>
         </div>
     `).join('');
     
@@ -404,7 +487,7 @@ function formatDuration(ms) {
     }
 }
 
-// Chart variables
+// Chart functions
 let weeklyChart = null;
 let dailyChart = null;
 
@@ -584,30 +667,7 @@ function exportCSV() {
     URL.revokeObjectURL(url);
 }
 
-// Detect touch device and add appropriate class
-function detectTouchDevice() {
-    if (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) {
-        document.body.classList.add('touch-device');
-    } else {
-        document.body.classList.add('no-touch-device');
-    }
-}
-
-// Initialize on load
-window.addEventListener('DOMContentLoaded', function() {
-    detectTouchDevice();
-    
-    // Handle viewport height on mobile
-    function setVH() {
-        let vh = window.innerHeight * 0.01;
-        document.documentElement.style.setProperty('--vh', `${vh}px`);
-    }
-    
-    setVH();
-    window.addEventListener('resize', setVH);
-});
-
-// Toggle mobile menu
+// Mobile menu functions
 function toggleMobileMenu() {
     const mobileNav = document.querySelector('.mobile-nav');
     const menuBtn = document.querySelector('.mobile-menu-btn');
@@ -622,18 +682,55 @@ function toggleMobileMenu() {
     }
 }
 
-// Close mobile menu when clicking outside
-document.addEventListener('click', function(event) {
-    const mobileNav = document.querySelector('.mobile-nav');
-    const menuBtn = document.querySelector('.mobile-menu-btn');
-    
-    if (!mobileNav.classList.contains('hidden') && 
-        !event.target.closest('.mobile-nav') && 
-        !event.target.closest('.mobile-menu-btn')) {
-        mobileNav.classList.add('hidden');
-        menuBtn.classList.remove('active');
+// Utility functions
+function detectTouchDevice() {
+    if (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) {
+        document.body.classList.add('touch-device');
+    } else {
+        document.body.classList.add('no-touch-device');
     }
-});
+}
+
+function setVH() {
+    let vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+}
+
+function setupEventListeners() {
+    // Handle page visibility changes
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden' && isTimerRunning) {
+            // Page is being hidden, save timer state
+            saveTimerState();
+        }
+    });
+    
+    // Handle beforeunload event
+    window.addEventListener('beforeunload', function(e) {
+        if (isTimerRunning) {
+            // Save timer state when page is about to be unloaded
+            saveTimerState();
+            
+            // Optional: Show confirmation message (may be blocked by browsers)
+            const message = 'You have an active timer. Are you sure you want to leave?';
+            e.returnValue = message;
+            return message;
+        }
+    });
+    
+    // Close mobile menu when clicking outside
+    document.addEventListener('click', function(event) {
+        const mobileNav = document.querySelector('.mobile-nav');
+        const menuBtn = document.querySelector('.mobile-menu-btn');
+        
+        if (!mobileNav.classList.contains('hidden') && 
+            !event.target.closest('.mobile-nav') && 
+            !event.target.closest('.mobile-menu-btn')) {
+            mobileNav.classList.add('hidden');
+            menuBtn.classList.remove('active');
+        }
+    });
+}
 
 // Add animation to hamburger icon
 const style = document.createElement('style');
@@ -651,3 +748,6 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// Initialize the app when DOM is loaded
+document.addEventListener('DOMContentLoaded', initApp);
