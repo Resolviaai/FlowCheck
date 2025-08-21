@@ -1,11 +1,11 @@
+// Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDoa8YzQ707xRs1IGD3AqdXNMgPwPM2FWA",
-  authDomain: "flowcheck-a4412.firebaseapp.com",
-  projectId: "flowcheck-a4412",
-  storageBucket: "flowcheck-a4412.firebasestorage.app",
-  messagingSenderId: "450070719140",
-  appId: "1:450070719140:web:52df78d02e59a45ba2d431",
-  measurementId: "G-M74ZCJ9G53"
+    apiKey: "AIzaSyDoa8YzQ707xRs1IGD3AqdXNMgPwPM2FWA",
+    authDomain: "flowcheck-a4412.firebaseapp.com",
+    projectId: "flowcheck-a4412",
+    storageBucket: "flowcheck-a4412.firebasestorage.app",
+    messagingSenderId: "450070719140",
+    appId: "1:450070719140:web:52df78d02e59a45ba2d431"
 };
 
 // Initialize Firebase
@@ -197,15 +197,85 @@ function startTimer() {
     isTimerRunning = true;
     nextCheckTime = startTime + (45 * 60 * 1000); // 45 minutes
     
+    // Clear any existing timeouts
+    if (inactivityTimeout) {
+        clearTimeout(inactivityTimeout);
+        inactivityTimeout = null;
+    }
+    
     document.getElementById('timer-btn').textContent = 'Stop';
     document.getElementById('session-description').disabled = true;
+    
+    // Clear any existing interval
+    if (timerInterval) clearInterval(timerInterval);
     
     timerInterval = setInterval(updateTimer, 1000);
     updateTimerInfo();
     
     // Save timer state
     saveTimerState();
+    
+    // Request notification permission if not already granted
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
 }
+
+function isModalVisible() {
+    return !inactivityModalEl.classList.contains('hidden');
+}
+
+// Update the updateTimer function to check modal visibility
+function updateTimer() {
+    if (!startTime) return;
+    
+    const elapsed = Date.now() - startTime;
+    const hours = Math.floor(elapsed / 3600000);
+    const minutes = Math.floor((elapsed % 3600000) / 60000);
+    const seconds = Math.floor((elapsed % 60000) / 1000);
+    
+    document.getElementById('timer-display').textContent = 
+        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    
+    // Check for inactivity (only if modal is not already visible)
+    if (nextCheckTime && Date.now() >= nextCheckTime && !isModalVisible()) {
+        promptInactivity();
+    }
+    
+    // Save timer state every 30 seconds
+    if (elapsed % 30000 < 1000) {
+        saveTimerState();
+    }
+}
+
+// Add debug logging to key functions
+const originalConfirmStillWorking = confirmStillWorking;
+confirmStillWorking = function() {
+    console.log('confirmStillWorking called');
+    console.log('inactivityTimeout before clear:', inactivityTimeout);
+    return originalConfirmStillWorking.apply(this, arguments);
+};
+
+const originalPromptInactivity = promptInactivity;
+promptInactivity = function() {
+    console.log('promptInactivity called');
+    console.log('nextCheckTime:', nextCheckTime);
+    console.log('currentTime:', Date.now());
+    return originalPromptInactivity.apply(this, arguments);
+};
+
+// Log timer state regularly
+setInterval(() => {
+    if (isTimerRunning) {
+        console.log('Timer state:', {
+            isRunning: isTimerRunning,
+            startTime: startTime,
+            nextCheckTime: nextCheckTime,
+            timeUntilCheck: nextCheckTime ? Math.ceil((nextCheckTime - Date.now()) / 60000) : null,
+            modalVisible: isModalVisible()
+        });
+    }
+}, 30000);
 
 function stopTimer(commit = true) {
     if (!isTimerRunning) return;
@@ -249,8 +319,8 @@ function updateTimer() {
     document.getElementById('timer-display').textContent = 
         `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     
-    // Check for inactivity
-    if (nextCheckTime && Date.now() >= nextCheckTime) {
+    // Check for inactivity (only if we haven't already prompted)
+    if (nextCheckTime && Date.now() >= nextCheckTime && !inactivityModalEl.classList.contains('hidden')) {
         promptInactivity();
     }
     
@@ -261,20 +331,39 @@ function updateTimer() {
 }
 
 function updateTimerInfo() {
-    if (!nextCheckTime) return;
+    if (!nextCheckTime) {
+        document.getElementById('timer-info').textContent = '';
+        return;
+    }
     
     const timeUntilCheck = Math.ceil((nextCheckTime - Date.now()) / 60000);
-    const isFirstCheck = nextCheckTime - startTime === 45 * 60 * 1000;
-    const interval = isFirstCheck ? 45 : 30;
     
-    document.getElementById('timer-info').textContent = 
-        `Inactivity check in ${timeUntilCheck} minutes (then every ${interval} minutes)`;
+    if (timeUntilCheck <= 0) {
+        document.getElementById('timer-info').textContent = 'Checking for activity...';
+        document.getElementById('timer-info').style.color = 'var(--accent-primary)';
+    } else {
+        const isFirstCheck = nextCheckTime - startTime === 45 * 60 * 1000;
+        const interval = isFirstCheck ? 45 : 30;
+        
+        document.getElementById('timer-info').textContent = 
+            `Inactivity check in ${timeUntilCheck} minutes (then every ${interval} minutes)`;
+        document.getElementById('timer-info').style.color = '';
+    }
 }
 
 function promptInactivity() {
+    // Clear any existing timeout first
+    if (inactivityTimeout) {
+        clearTimeout(inactivityTimeout);
+        inactivityTimeout = null;
+    }
+    
     // Browser notification
     if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Still working?', { body: 'Confirm to keep tracking.' });
+        new Notification('Still working?', { 
+            body: 'Confirm within 5 minutes to keep tracking. Otherwise, this session will be discarded.',
+            tag: 'flowcheck-inactivity'
+        });
     }
     
     // Show modal
@@ -289,20 +378,52 @@ function promptInactivity() {
 }
 
 function confirmStillWorking() {
-    inactivityModalEl.classList.add('hidden');
-    if (inactivityTimeout) clearTimeout(inactivityTimeout);
+    // Clear the inactivity timeout first
+    if (inactivityTimeout) {
+        clearTimeout(inactivityTimeout);
+        inactivityTimeout = null;
+    }
     
+    // Hide the modal
+    inactivityModalEl.classList.add('hidden');
+    
+    // Set next check time to 30 minutes from now
     const now = Date.now();
     nextCheckTime = now + (30 * 60 * 1000); // 30 minutes
+    
+    // Update timer info
     updateTimerInfo();
     
     // Save updated timer state
     saveTimerState();
+    
+    // Show confirmation message
+    const timerInfo = document.getElementById('timer-info');
+    timerInfo.textContent = 'Activity confirmed! Next check in 30 minutes.';
+    timerInfo.style.color = 'var(--accent-primary)';
+    
+    // Reset to normal color after 3 seconds
+    setTimeout(() => {
+        timerInfo.style.color = '';
+        updateTimerInfo();
+    }, 3000);
 }
 
 function discardSession() {
+    // Clear the inactivity timeout
+    if (inactivityTimeout) {
+        clearTimeout(inactivityTimeout);
+        inactivityTimeout = null;
+    }
+    
+    // Hide the modal
     inactivityModalEl.classList.add('hidden');
+    
+    // Stop the timer without saving
     stopTimer(false);
+    
+    // Show message
+    alert('Session discarded');
 }
 
 // Timer state persistence
@@ -577,15 +698,17 @@ function updateDailyChart() {
     }
 
     const hours = Array.from({length: 24}, (_, i) => i);
-    const hourData = hours.map(hour => {
-        const hourTotal = sessions
-            .filter(s => {
-                const sessionHour = new Date(s.start).getHours();
-                return sessionHour === hour;
-            })
-            .reduce((sum, s) => sum + s.durationMs, 0);
+    
+    // Initialize hourData with zeros for all hours
+    const hourData = new Array(24).fill(0);
+    
+    // Calculate totals for each local hour
+    sessions.forEach(session => {
+        const sessionDate = new Date(session.start);
+        const localHour = sessionDate.getHours(); // This now gets local hour
+        const durationMinutes = Math.round(session.durationMs / 60000);
         
-        return Math.round(hourTotal / 60000); // Convert to minutes
+        hourData[localHour] += durationMinutes;
     });
 
     // Determine text color based on theme
@@ -595,7 +718,12 @@ function updateDailyChart() {
     dailyChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: hours.map(h => `${h}:00`),
+            labels: hours.map(h => {
+                // Format hours in 12-hour format with AM/PM
+                const period = h >= 12 ? 'PM' : 'AM';
+                const hour12 = h % 12 || 12; // Convert 0 to 12 for midnight
+                return `${hour12} ${period}`;
+            }),
             datasets: [{
                 label: 'Minutes',
                 data: hourData,
@@ -617,6 +745,13 @@ function updateDailyChart() {
             plugins: {
                 legend: {
                     display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `Minutes: ${context.raw}`;
+                        }
+                    }
                 }
             },
             scales: {
@@ -626,6 +761,14 @@ function updateDailyChart() {
                         color: gridColor
                     },
                     ticks: {
+                        color: textColor,
+                        callback: function(value) {
+                            return value + 'm';
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Minutes',
                         color: textColor
                     }
                 },
@@ -634,6 +777,13 @@ function updateDailyChart() {
                         color: gridColor
                     },
                     ticks: {
+                        color: textColor,
+                        maxRotation: 45,
+                        minRotation: 45
+                    },
+                    title: {
+                        display: true,
+                        text: 'Time of Day',
                         color: textColor
                     }
                 }
@@ -641,6 +791,25 @@ function updateDailyChart() {
         }
     });
 }
+function displayTimezoneInfo() {
+    // Get user's timezone
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezoneOffset = new Date().getTimezoneOffset();
+    const offsetHours = Math.abs(Math.floor(timezoneOffset / 60));
+    const offsetMinutes = Math.abs(timezoneOffset % 60);
+    const offsetSign = timezoneOffset <= 0 ? '+' : '-';
+    
+    console.log(`User's timezone: ${timezone} (GMT${offsetSign}${offsetHours}:${offsetMinutes.toString().padStart(2, '0')})`);
+    
+    // Optional: Display this info somewhere in your UI
+    // const timezoneInfoEl = document.getElementById('timezone-info');
+    // if (timezoneInfoEl) {
+    //     timezoneInfoEl.textContent = `Timezone: ${timezone}`;
+    // }
+}
+
+// Call this function when the app loads
+displayTimezoneInfo();
 
 function exportCSV() {
     if (sessions.length === 0) {
